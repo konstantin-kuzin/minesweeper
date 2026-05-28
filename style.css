@@ -210,7 +210,7 @@ body {
 
 @keyframes board-rotate {
   from { transform: rotate(0deg); }
-  to   { transform: rotate(90deg); }
+  to   { transform: rotate(var(--rotate-to, 90deg)); }
 }
 
 .cell {
@@ -258,7 +258,7 @@ body {
 
 @keyframes num-counter-rotate {
   from { transform: rotate(0deg); }
-  to   { transform: rotate(-90deg); }
+  to   { transform: rotate(var(--num-counter-rotate, -90deg)); }
 }
 
 @keyframes bubble-pop {

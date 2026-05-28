@@ -2,7 +2,7 @@
 
 const ROWS = 10;
 const COLS = 10;
-const MINES = 10;
+const MINES = 15;
 const TIME_LIMIT = 150;
 
 const formatTime = seconds => {
@@ -143,7 +143,7 @@ class Game {
     }
   }
 
-  _rotateBoard90CW() {
+  _rotate90CW() {
     const oldRows = this.rows;
     const oldCols = this.cols;
     const newCells = Array.from({ length: oldCols }, () =>
@@ -159,13 +159,43 @@ class Game {
     this.cells = newCells;
   }
 
+  _rotate90CCW() {
+    const oldRows = this.rows;
+    const oldCols = this.cols;
+    const newCells = Array.from({ length: oldCols }, () =>
+      Array.from({ length: oldRows }, () => null)
+    );
+    for (let r = 0; r < oldRows; r++) {
+      for (let c = 0; c < oldCols; c++) {
+        newCells[oldCols - 1 - c][r] = { ...this.cells[r][c] };
+      }
+    }
+    this.rows = oldCols;
+    this.cols = oldRows;
+    this.cells = newCells;
+  }
+
+  _rotate180() {
+    const newCells = Array.from({ length: this.rows }, () =>
+      Array.from({ length: this.cols }, () => null)
+    );
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        newCells[this.rows - 1 - r][this.cols - 1 - c] = { ...this.cells[r][c] };
+      }
+    }
+    this.cells = newCells;
+  }
+
   _incrementMoveAndMaybeShift() {
     this.moveCount++;
     return true;
   }
 
-  applyShift() {
-    this._rotateBoard90CW();
+  applyShift(angle) {
+    if (angle === 90) this._rotate90CW();
+    else if (angle === -90) this._rotate90CCW();
+    else if (angle === 180) this._rotate180();
     this._calcCounts();
   }
 
@@ -385,25 +415,30 @@ const UI = {
   },
 
   _applyBoardShift() {
+    const angles = [90, -90, 180];
+    const angle = angles[Math.floor(Math.random() * angles.length)];
+
     Sound.playRotate();
     const boardEl = document.getElementById('board');
+    boardEl.style.setProperty('--rotate-to', `${angle}deg`);
+    boardEl.style.setProperty('--num-counter-rotate', `${-angle}deg`);
     boardEl.classList.add('rotating');
     Kostya.animateShift();
     setTimeout(() => {
-      this.game.applyShift();
+      this.game.applyShift(angle);
       boardEl.classList.remove('rotating');
       boardEl.style.transform = '';
       this._renderBoard();
       this._refreshAllCells();
-      this._animateNumsUpright();
+      this._animateNumsUpright(angle);
       this._updateMineCounter();
       Kostya.reset();
     }, 520);
   },
 
-  _animateNumsUpright() {
+  _animateNumsUpright(angle) {
     document.querySelectorAll('#board .cell-num').forEach(num => {
-      num.style.transform = 'rotate(90deg)';
+      num.style.transform = `rotate(${angle}deg)`;
       num.style.transition = 'none';
       requestAnimationFrame(() => requestAnimationFrame(() => {
         num.style.transition = 'transform 0.35s ease-out';
@@ -455,6 +490,20 @@ const UI = {
 
 const Kostya = {
   BUBBLE_MS: 5000,
+  SHIFT_BUBBLE_MS: 1500,
+  SHIFT_PHRASES: [
+    'Византично',
+    'Приемлемо',
+    'Говно, переделай!',
+    'Сойдёт',
+    'Ну, допустим',
+    'Не постарался (',
+    'Ты можешь лучше',
+    'Я не знаю, что ты делаешь',
+    'Это не так работает',
+    'Зачем????',
+    'Ну такое...'
+  ],
   imgEl: null,
   bubbleEl: null,
   containerEl: null,
@@ -468,9 +517,12 @@ const Kostya = {
   },
 
   reset() {
-    this.imgEl.src = 'pixel_character_stomp_v2.gif';
-    this.bubbleEl.className = 'hidden';
-    this.bubbleEl.textContent = 'Византично!';
+    const bubbleActive = !!this._bubbleTimer;
+    if (!bubbleActive) {
+      this.imgEl.src = 'pixel_character_stomp_v2.gif';
+      this.bubbleEl.className = 'hidden';
+      this.bubbleEl.textContent = this.SHIFT_PHRASES[0];
+    }
     this._stopWander();
     const track = document.getElementById('kostya-track');
     const trackWidth = track ? track.clientWidth : 0;
@@ -496,10 +548,13 @@ const Kostya = {
   },
 
   animateShift() {
+    const phrase = this.SHIFT_PHRASES[
+      Math.floor(Math.random() * this.SHIFT_PHRASES.length)
+    ];
     this.imgEl.src = 'pointing.gif';
-    this._showBubble('Византично!', false, () => {
+    this._showBubble(phrase, false, () => {
       this.imgEl.src = 'pixel_character_stomp_v2.gif';
-    });
+    }, this.SHIFT_BUBBLE_MS);
   },
 
   animateLose() {
@@ -511,14 +566,14 @@ const Kostya = {
   animateWin() {
     this._stopWander();
     this.imgEl.src = 'happy_jump.gif';
-    this._showBubble('Сапёр из тебя никудышный.<br>Это было вакханально', true);
+    this._showBubble('Шик-блеск, византично!', true);
   },
 
   animateTimeout() {
     this.animateLose();
   },
 
-  _showBubble(text, persistent, onHide) {
+  _showBubble(text, persistent, onHide, duration = this.BUBBLE_MS) {
     if (this._bubbleTimer) {
       clearTimeout(this._bubbleTimer);
       this._bubbleTimer = null;
@@ -530,7 +585,7 @@ const Kostya = {
         this._bubbleTimer = null;
         this.bubbleEl.className = 'hidden';
         if (onHide) onHide();
-      }, this.BUBBLE_MS);
+      }, duration);
     }
   }
 };
