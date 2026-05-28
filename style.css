@@ -1,19 +1,31 @@
 :root {
-  --bg:               #C8956C;
-  --cell-closed:      #D4956A;
-  --cell-open:        #E8C49A;
-  --cell-border-lt:   #E8B080;
-  --cell-border-dk:   #7A4020;
-  --board-bg:         #8B5E3C;
-  --text:             #FFF8E8;
-  --font:             'Silkscreen', monospace;
+  --chrome:           #C0C0C0;
+  --highlight:        #FFFFFF;
+  --shadow:           #808080;
+  --deep:             #000000;
+  --lcd-bg:           #000000;
+  --lcd-fg:           #FF0000;
+  --cell-face:        #C0C0C0;
+  --cell-open:        #C0C0C0;
+  --text:             #000000;
+  --font:             Tahoma, "MS Sans Serif", "Segoe UI", sans-serif;
+  --cell-size:        32px;
+  --board-cols:       10;
+  --board-gap:        0;
+  --board-border:     3px;
+  --board-width:      calc(
+    2 * var(--board-border) +
+    var(--board-cols) * var(--cell-size) +
+    (var(--board-cols) - 1) * var(--board-gap)
+  );
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: var(--bg);
+  background: var(--chrome);
   font-family: var(--font);
+  font-size: 11px;
   color: var(--text);
   min-height: 100vh;
   display: flex;
@@ -23,96 +35,119 @@ body {
   padding: 24px;
 }
 
-/* --- App: left-aligned children so diff buttons start at sidebar edge --- */
 #app {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 24px;
+  align-items: center;
 }
 
-/* --- Difficulty buttons --- */
-#difficulty-selector { display: flex; gap: 8px; }
-
-.diff-btn {
-  font-family: var(--font);
-  font-size: 12px;
-  padding: 10px 22px;
-  background: #8B5E3C;
-  color: var(--text);
-  border: 2px solid;
-  border-color: #A07050 #5A3010 #5A3010 #A07050;
-  cursor: pointer;
-  text-transform: uppercase;
-}
-.diff-btn:hover,
-.diff-btn.active { background: #A07050; }
-
-/* --- Game layout --- */
-#game-container { display: flex; gap: 24px; align-items: flex-start; }
-
-#sidebar {
+#game-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 120px;
+  align-items: center;
+  gap: 16px;
+}
+
+#board-wrapper {
+  width: var(--board-width);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--chrome);
+  border: 3px solid;
+  border-color: var(--highlight) var(--shadow) var(--shadow) var(--highlight);
+}
+
+#toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  border: 2px solid;
+  border-color: var(--shadow) var(--highlight) var(--highlight) var(--shadow);
 }
 
 #mine-counter,
 #timer {
-  font-size: 18px;
-  background: #6B3A1F;
-  padding: 8px 12px;
-  border: 2px solid #4A2010;
-  letter-spacing: 1px;
+  background: var(--lcd-bg);
+  color: var(--lcd-fg);
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 2px;
+  padding: 5px 6px;
+  border: 1px solid var(--shadow);
+  box-shadow: inset 1px 1px 2px var(--deep);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
+
+#mine-counter { justify-content: flex-end; }
+#timer        { justify-content: flex-end; }
 
 #timer.warning {
-  border-color: #FF4040;
-  color: #FF6060;
-  animation: timer-pulse 1s ease-in-out infinite;
+  animation: timer-blink 1s step-end infinite;
 }
 
-@keyframes timer-pulse {
-  0%, 100% { background: #6B3A1F; }
-  50%       { background: #8B2020; }
+@keyframes timer-blink {
+  50% { color: #FF8080; }
 }
 
 #new-game-btn {
   font-family: var(--font);
-  font-size: 12px;
-  padding: 10px;
-  background: #8B5E3C;
+  font-size: 20px;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-self: center;
+  background: var(--chrome);
   color: var(--text);
   border: 2px solid;
-  border-color: #A07050 #5A3010 #5A3010 #A07050;
+  border-color: var(--highlight) var(--shadow) var(--shadow) var(--highlight);
   cursor: pointer;
-  text-transform: uppercase;
 }
-#new-game-btn:hover { background: #A07050; }
+#new-game-btn:hover  { background: #D4D4D4; }
+#new-game-btn:active {
+  border-color: var(--shadow) var(--highlight) var(--highlight) var(--shadow);
+  padding: 2px 0 0 2px;
+}
 
 #message {
-  font-size: 16px;
+  font-size: 11px;
+  font-weight: 700;
   text-align: center;
-  min-height: 28px;
+  min-height: 0;
   line-height: 1.4;
+  color: var(--text);
 }
-#message.win  { color: #90EE90; }
-#message.lose { color: #FF1111; text-shadow: 0 0 8px #FF0000; }
+#message:not(:empty) { min-height: 16px; }
+#message.win  { color: #008000; }
+#message.lose { color: #FF0000; }
 
-/* --- Board wrapper: Kostya floats outside on the right --- */
-#board-wrapper {
+#kostya-track {
   position: relative;
+  width: var(--board-width);
+  height: 110px;
+  flex-shrink: 0;
+}
+
+#board-area {
   overflow: visible;
 }
 
-/* --- Kostya: positioned outside board on the right --- */
 #kostya-container {
   position: absolute;
-  right: -120px;
-  top: 0;
+  bottom: 0;
+  left: 0;
   width: 110px;
-  transition: top 0.7s ease-in-out;
+  transition: left 0.7s ease-in-out;
   z-index: 10;
 }
 
@@ -124,33 +159,34 @@ body {
   image-rendering: crisp-edges;
 }
 
-/* Comic speech bubble — appears to the left of Kostya */
 #speech-bubble {
   position: absolute;
-  top: 8px;
-  right: 114px;
-  background: #FFF8E8;
-  color: #2a1005;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--chrome);
+  color: var(--text);
   font-family: var(--font);
   font-size: 10px;
-  padding: 10px 12px;
-  border: 2px solid #2a1005;
+  padding: 8px 10px;
+  border: 2px solid;
+  border-color: var(--highlight) var(--shadow) var(--shadow) var(--highlight);
   white-space: nowrap;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 #speech-bubble.timeout {
   white-space: normal;
   width: 220px;
-  line-height: 1.8;
+  line-height: 1.6;
 }
 #speech-bubble::after {
   content: '';
   position: absolute;
-  top: 50%;
-  right: -9px;
-  transform: translateY(-50%);
-  border: 4px solid transparent;
-  border-left-color: #2a1005;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--shadow);
 }
 #speech-bubble.hidden  { display: none; }
 #speech-bubble.visible {
@@ -158,12 +194,12 @@ body {
   animation: bubble-pop 0.2s ease-out;
 }
 
-/* --- Game board --- */
 #board {
   display: grid;
-  border: 4px solid var(--board-bg);
-  background: var(--board-bg);
-  gap: 2px;
+  border: 3px solid;
+  border-color: var(--shadow) var(--highlight) var(--highlight) var(--shadow);
+  background: var(--chrome);
+  gap: var(--board-gap);
   user-select: none;
   transform-origin: center center;
 }
@@ -178,37 +214,37 @@ body {
 }
 
 .cell {
-  width: 32px;
-  height: 32px;
-  background: var(--cell-closed);
+  width: var(--cell-size);
+  height: var(--cell-size);
+  background: var(--cell-face);
   border: 2px solid;
-  border-color: var(--cell-border-lt) var(--cell-border-dk) var(--cell-border-dk) var(--cell-border-lt);
+  border-color: var(--highlight) var(--shadow) var(--shadow) var(--highlight);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 18px;
   font-family: var(--font);
   font-weight: 700;
 }
 
 .cell.revealed {
   background: var(--cell-open);
-  border-color: #C0885A;
+  border: 1px solid var(--shadow);
   cursor: default;
 }
 
 .cell.mine     { background: var(--cell-open); }
-.cell.mine-hit { background: #FF5050 !important; }
+.cell.mine-hit { background: #FF0000 !important; border-color: #800000; }
 
-.cell[data-num="1"] { color: #2a8c1a; }
-.cell[data-num="2"] { color: #1a5c8a; }
-.cell[data-num="3"] { color: #c84820; }
-.cell[data-num="4"] { color: #1a1a8c; }
-.cell[data-num="5"] { color: #8c1a1a; }
-.cell[data-num="6"] { color: #1a8c8c; }
-.cell[data-num="7"] { color: #1a1a1a; }
-.cell[data-num="8"] { color: #606060; }
+.cell[data-num="1"] { color: #0000FF; }
+.cell[data-num="2"] { color: #008000; }
+.cell[data-num="3"] { color: #FF0000; }
+.cell[data-num="4"] { color: #000080; }
+.cell[data-num="5"] { color: #800000; }
+.cell[data-num="6"] { color: #008080; }
+.cell[data-num="7"] { color: #000000; }
+.cell[data-num="8"] { color: #808080; }
 
 .cell-num {
   display: block;
@@ -225,13 +261,11 @@ body {
   to   { transform: rotate(-90deg); }
 }
 
-/* --- Animations --- */
 @keyframes bubble-pop {
   from { transform: scale(0.4); opacity: 0; }
   to   { transform: scale(1);   opacity: 1; }
 }
 
-/* Flying flag appended to <body> during steal animation */
 .flying-flag {
   position: fixed;
   font-size: 20px;

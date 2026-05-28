@@ -1,22 +1,97 @@
 'use strict';
 
-const LEVELS = {
-  easy:   { rows:  9, cols:  9, mines:  10, timeLimit: 150 },
-  medium: { rows: 16, cols: 16, mines:  40, timeLimit: 300 },
-  hard:   { rows: 16, cols: 30, mines:  99, timeLimit: 600 },
-  expert: { rows: 24, cols: 30, mines: 160, timeLimit: 900 }
+const ROWS = 10;
+const COLS = 10;
+const MINES = 10;
+const TIME_LIMIT = 150;
+
+const formatTime = seconds => {
+  const s = Math.max(0, seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
 const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 
+const Sound = {
+  _audioCtx: null,
+
+  _ctx() {
+    if (!this._audioCtx) {
+      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+    return this._audioCtx;
+  },
+
+  _tone(freq, duration, type = 'square', vol = 0.12, when = 0) {
+    const ctx = this._ctx();
+    const t = ctx.currentTime + when;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + duration + 0.01);
+  },
+
+  playReveal() {
+    this._tone(900, 0.04, 'square', 0.07);
+  },
+
+  playRotate() {
+    const ctx = this._ctx();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(520, t + 0.45);
+    gain.gain.setValueAtTime(0.09, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.5);
+  },
+
+  playExplode() {
+    const ctx = this._ctx();
+    const t = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.45);
+    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(900, t);
+    filter.frequency.exponentialRampToValueAtTime(80, t + 0.35);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start(t);
+    this._tone(90, 0.25, 'sawtooth', 0.18);
+  },
+
+  playWin() {
+    [523, 659, 784, 1047].forEach((freq, i) => {
+      this._tone(freq, 0.22, 'square', 0.1, i * 0.12);
+    });
+  }
+};
+
 class Game {
-  constructor(level = 'easy') {
-    this.level = level;
-    const { rows, cols, mines, timeLimit } = LEVELS[level];
-    this.rows = rows;
-    this.cols = cols;
-    this.totalMines = mines;
-    this.timeLimit = timeLimit;
+  constructor() {
+    this.rows = ROWS;
+    this.cols = COLS;
+    this.totalMines = MINES;
+    this.timeLimit = TIME_LIMIT;
     this.cells = [];
     this.flagCount = 0;
     this.revealedCount = 0;
@@ -171,15 +246,9 @@ class Game {
     const timeEl  = document.getElementById('time');
     const timerEl = document.getElementById('timer');
 
-    const fmt = s => {
-      const m = String(Math.floor(s / 60)).padStart(2, '0');
-      const sec = String(s % 60).padStart(2, '0');
-      return `${m}:${sec}`;
-    };
-
     this.timerInterval = setInterval(() => {
       remaining--;
-      timeEl.textContent = fmt(remaining);
+      timeEl.textContent = formatTime(remaining);
 
       if (remaining <= 30) timerEl.classList.add('warning');
 
@@ -203,32 +272,23 @@ const UI = {
   init() {
     document.getElementById('new-game-btn')
       .addEventListener('click', () => this.newGame());
-    document.querySelectorAll('.diff-btn').forEach(btn =>
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.newGame(btn.dataset.level);
-      })
-    );
-    this.newGame('easy');
+    this.newGame();
   },
 
-  newGame(level) {
+  newGame() {
     if (typeof Confetti !== 'undefined') Confetti.stop();
     if (this.game) this.game._stopTimer();
-    const activeLevel = level ||
-      document.querySelector('.diff-btn.active').dataset.level;
-    this.game = new Game(activeLevel);
+    this.game = new Game();
     this.game.onTimeout = () => this._handleTimeout();
     this._renderBoard();
     this._updateMineCounter();
     // Show initial countdown time
-    const fmt = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-    document.getElementById('time').textContent = fmt(this.game.timeLimit);
+    document.getElementById('time').textContent = formatTime(this.game.timeLimit);
+    document.getElementById('new-game-btn').textContent = '🙂';
     document.getElementById('timer').classList.remove('warning');
     document.getElementById('message').textContent = '';
     document.getElementById('message').className = '';
-    if (typeof Kostya !== 'undefined') Kostya.reset(this.game.rows);
+    if (typeof Kostya !== 'undefined') Kostya.reset();
   },
 
   _renderBoard() {
@@ -284,8 +344,19 @@ const UI = {
   },
 
   _updateMineCounter() {
-    document.getElementById('mines-left').textContent =
-      this.game.totalMines - this.game.flagCount;
+    const left = this.game.totalMines - this.game.flagCount;
+    let text;
+    if (left < 0) {
+      text = '-' + String(Math.min(99, Math.abs(left))).padStart(2, '0');
+    } else {
+      text = String(Math.min(999, left)).padStart(3, '0');
+    }
+    document.getElementById('mines-left').textContent = text;
+  },
+
+  _setFace(face) {
+    const faces = { idle: '🙂', win: '😎', lose: '😵' };
+    document.getElementById('new-game-btn').textContent = faces[face] || '🙂';
   },
 
   _handleReveal(row, col) {
@@ -295,9 +366,13 @@ const UI = {
     this._updateMineCounter();
     if (result.shifted) this._applyBoardShift();
     if (result.type === 'mine') {
+      Sound.playWin();
       this._showGameOver(result.row, result.col);
     } else if (result.type === 'win') {
+      Sound.playExplode();
       this._showWin();
+    } else if (result.type === 'reveal') {
+      Sound.playReveal();
     }
   },
 
@@ -310,6 +385,7 @@ const UI = {
   },
 
   _applyBoardShift() {
+    Sound.playRotate();
     const boardEl = document.getElementById('board');
     boardEl.classList.add('rotating');
     Kostya.animateShift();
@@ -321,7 +397,7 @@ const UI = {
       this._refreshAllCells();
       this._animateNumsUpright();
       this._updateMineCounter();
-      Kostya.reset(this.game.rows);
+      Kostya.reset();
     }, 520);
   },
 
@@ -346,7 +422,10 @@ const UI = {
     const msg = document.getElementById('message');
     msg.textContent = 'GAME OVER';
     msg.className = 'lose';
+    this._setFace('win');
     Kostya.animateLose();
+    Confetti.start();
+    setTimeout(() => Confetti.stop(), 3500);
   },
 
   _handleTimeout() {
@@ -359,24 +438,28 @@ const UI = {
     const msg = document.getElementById('message');
     msg.textContent = 'ВРЕМЯ ВЫШЛО!';
     msg.className = 'lose';
+    this._setFace('win');
     Kostya.animateTimeout();
+    Confetti.start();
+    setTimeout(() => Confetti.stop(), 3500);
   },
 
   _showWin() {
     const msg = document.getElementById('message');
     msg.textContent = 'YOU WIN!';
     msg.className = 'win';
+    this._setFace('lose');
     Kostya.animateWin();
-    Confetti.start();
-    setTimeout(() => Confetti.stop(), 3500);
   }
 };
 
 const Kostya = {
+  BUBBLE_MS: 5000,
   imgEl: null,
   bubbleEl: null,
   containerEl: null,
   _wanderInterval: null,
+  _bubbleTimer: null,
 
   init() {
     this.imgEl       = document.getElementById('kostya-img');
@@ -384,27 +467,26 @@ const Kostya = {
     this.containerEl = document.getElementById('kostya-container');
   },
 
-  reset(totalRows) {
+  reset() {
     this.imgEl.src = 'pixel_character_stomp_v2.gif';
     this.bubbleEl.className = 'hidden';
     this.bubbleEl.textContent = 'Византично!';
     this._stopWander();
+    const track = document.getElementById('kostya-track');
+    const trackWidth = track ? track.clientWidth : 0;
+    const charWidth = this.containerEl.offsetWidth || 110;
+    this._maxLeft = Math.max(0, trackWidth - charWidth);
     this._moveTo(0);
-    this._startWander(totalRows);
+    this._startWander();
   },
 
-  _rowToPx(row) {
-    return 4 + row * 34;
+  _moveTo(leftPx) {
+    this.containerEl.style.left = Math.min(this._maxLeft, leftPx) + 'px';
   },
 
-  _moveTo(topPx) {
-    this.containerEl.style.top = topPx + 'px';
-  },
-
-  _startWander(totalRows) {
-    const maxTop = Math.max(0, totalRows * 34 - 110);
+  _startWander() {
     this._wanderInterval = setInterval(() => {
-      this._moveTo(Math.floor(Math.random() * (maxTop + 1)));
+      this._moveTo(Math.floor(Math.random() * (this._maxLeft + 1)));
     }, 2500);
   },
 
@@ -422,30 +504,33 @@ const Kostya = {
 
   animateLose() {
     this._stopWander();
-    this.imgEl.src = 'happy_jump.gif';
-    this._showBubble('Сапёр из тебя никудышный.<br>Это было вакханально', true);
+    this.imgEl.src = 'panic_scream.gif';
+    this._showBubble('Как макеты рисуешь, так и играешь!', true);
   },
 
   animateWin() {
     this._stopWander();
-    this.imgEl.src = 'panic_scream.gif';
-    this.bubbleEl.className = 'hidden';
-  },
-
-  animateTimeout() {
-    this._stopWander();
     this.imgEl.src = 'happy_jump.gif';
     this._showBubble('Сапёр из тебя никудышный.<br>Это было вакханально', true);
   },
 
+  animateTimeout() {
+    this.animateLose();
+  },
+
   _showBubble(text, persistent, onHide) {
+    if (this._bubbleTimer) {
+      clearTimeout(this._bubbleTimer);
+      this._bubbleTimer = null;
+    }
     this.bubbleEl.innerHTML = text;
     this.bubbleEl.className = persistent ? 'visible timeout' : 'visible';
     if (!persistent) {
-      setTimeout(() => {
+      this._bubbleTimer = setTimeout(() => {
+        this._bubbleTimer = null;
         this.bubbleEl.className = 'hidden';
         if (onHide) onHide();
-      }, 2200);
+      }, this.BUBBLE_MS);
     }
   }
 };
