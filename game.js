@@ -20,7 +20,7 @@ class Game {
     this.cells = [];
     this.flagCount = 0;
     this.revealedCount = 0;
-    this.totalFlagsPlaced = 0;
+    this.moveCount = 0;
     this.firstClick = true;
     this.gameOver = false;
     this.won = false;
@@ -68,6 +68,32 @@ class Game {
     }
   }
 
+  _rotateBoard90CW() {
+    const oldRows = this.rows;
+    const oldCols = this.cols;
+    const newCells = Array.from({ length: oldCols }, () =>
+      Array.from({ length: oldRows }, () => null)
+    );
+    for (let r = 0; r < oldRows; r++) {
+      for (let c = 0; c < oldCols; c++) {
+        newCells[c][oldRows - 1 - r] = { ...this.cells[r][c] };
+      }
+    }
+    this.rows = oldCols;
+    this.cols = oldRows;
+    this.cells = newCells;
+  }
+
+  _incrementMoveAndMaybeShift() {
+    this.moveCount++;
+    return true;
+  }
+
+  applyShift() {
+    this._rotateBoard90CW();
+    this._calcCounts();
+  }
+
   reveal(row, col) {
     if (this.gameOver || this.won) return { type: 'none' };
     const cell = this.cells[row][col];
@@ -82,6 +108,7 @@ class Game {
     if (cell.mine) {
       cell.revealed = true;
       this.gameOver = true;
+      this.moveCount++;
       this._stopTimer();
       return { type: 'mine', row, col };
     }
@@ -91,10 +118,13 @@ class Game {
 
     if (this.revealedCount >= this.rows * this.cols - this.totalMines) {
       this.won = true;
+      this.moveCount++;
       this._stopTimer();
       return { type: 'win' };
     }
-    return { type: 'reveal' };
+
+    const shifted = this._incrementMoveAndMaybeShift();
+    return { type: 'reveal', shifted };
   }
 
   _floodFill(row, col) {
@@ -117,34 +147,15 @@ class Game {
     return count;
   }
 
-  // Returns { placed: bool, steals: 0|1 } or null (not allowed)
+  // Returns { placed: bool, shifted: bool } or null (not allowed)
   toggleFlag(row, col) {
     if (this.gameOver || this.won || this.firstClick) return null;
     const cell = this.cells[row][col];
     if (cell.revealed) return null;
     cell.flagged = !cell.flagged;
     this.flagCount += cell.flagged ? 1 : -1;
-    let steals = 0;
-    if (cell.flagged) {
-      this.totalFlagsPlaced++;
-      // After first 2 flags, each placement has a 30% chance to trigger a steal
-      if (this.totalFlagsPlaced > 2 && Math.random() < 0.3) {
-        steals = 1;
-      }
-    }
-    return { placed: cell.flagged, steals };
-  }
-
-  stealRandomFlag() {
-    const flagged = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++)
-        if (this.cells[r][c].flagged) flagged.push([r, c]);
-    if (!flagged.length) return null;
-    const [r, c] = flagged[Math.floor(Math.random() * flagged.length)];
-    this.cells[r][c].flagged = false;
-    this.flagCount--;
-    return [r, c];
+    const shifted = this._incrementMoveAndMaybeShift();
+    return { placed: cell.flagged, shifted };
   }
 
   getAllMines() {
@@ -254,7 +265,10 @@ const UI = {
     if (cell.revealed) {
       el.classList.add('revealed');
       if (cell.count > 0) {
-        el.textContent = cell.count;
+        const num = document.createElement('span');
+        num.className = 'cell-num';
+        num.textContent = cell.count;
+        el.appendChild(num);
         el.dataset.num = cell.count;
       }
     } else if (cell.flagged) {
@@ -279,6 +293,7 @@ const UI = {
     if (result.type === 'none') return;
     this._refreshAllCells();
     this._updateMineCounter();
+    if (result.shifted) this._applyBoardShift();
     if (result.type === 'mine') {
       this._showGameOver(result.row, result.col);
     } else if (result.type === 'win') {
@@ -288,26 +303,37 @@ const UI = {
 
   _handleFlag(row, col) {
     const result = this.game.toggleFlag(row, col);
-    if (result !== null) {
-      this._updateCellEl(row, col);
-      this._updateMineCounter();
-      this._scheduleKostyaSteals(result.steals);
-    }
+    if (result === null) return;
+    this._updateCellEl(row, col);
+    this._updateMineCounter();
+    if (result.shifted) this._applyBoardShift();
   },
 
-  _scheduleKostyaSteals(count) {
-    for (let i = 0; i < count; i++) {
-      setTimeout(() => {
-        const stolen = this.game.stealRandomFlag();
-        if (stolen) {
-          const [r, c] = stolen;
-          Kostya.animateSteal(this._getCellEl(r, c), () => {
-            this._updateCellEl(r, c);
-            this._updateMineCounter();
-          });
-        }
-      }, i * 1100 + 300);
-    }
+  _applyBoardShift() {
+    const boardEl = document.getElementById('board');
+    boardEl.classList.add('rotating');
+    Kostya.animateShift();
+    setTimeout(() => {
+      this.game.applyShift();
+      boardEl.classList.remove('rotating');
+      boardEl.style.transform = '';
+      this._renderBoard();
+      this._refreshAllCells();
+      this._animateNumsUpright();
+      this._updateMineCounter();
+      Kostya.reset(this.game.rows);
+    }, 520);
+  },
+
+  _animateNumsUpright() {
+    document.querySelectorAll('#board .cell-num').forEach(num => {
+      num.style.transform = 'rotate(90deg)';
+      num.style.transition = 'none';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        num.style.transition = 'transform 0.35s ease-out';
+        num.style.transform = 'rotate(0deg)';
+      }));
+    });
   },
 
   _showGameOver(hitRow, hitCol) {
@@ -387,37 +413,11 @@ const Kostya = {
     this._wanderInterval = null;
   },
 
-  animateSteal(cellEl, onFlagRemoved) {
-    const row = parseInt(cellEl.dataset.row, 10);
-    this._moveTo(this._rowToPx(row));
-
-    const cellRect   = cellEl.getBoundingClientRect();
-    const kostyaRect = this.containerEl.getBoundingClientRect();
-
-    const flyEl = document.createElement('div');
-    flyEl.className = 'flying-flag';
-    flyEl.textContent = '🚩';
-    flyEl.style.left = (cellRect.left + cellRect.width  / 2 - 10) + 'px';
-    flyEl.style.top  = (cellRect.top  + cellRect.height / 2 - 10) + 'px';
-    flyEl.style.transition = 'none';
-    document.body.appendChild(flyEl);
-
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      flyEl.style.transition = 'left 0.5s ease-in, top 0.5s ease-in, opacity 0.5s, transform 0.5s';
-      flyEl.style.left      = (kostyaRect.left + kostyaRect.width  / 2 - 10) + 'px';
-      flyEl.style.top       = (kostyaRect.top  + kostyaRect.height / 2 - 10) + 'px';
-      flyEl.style.opacity   = '0';
-      flyEl.style.transform = 'scale(0.2)';
-    }));
-
-    setTimeout(() => {
-      flyEl.remove();
-      onFlagRemoved();
-      this.imgEl.src = 'pointing.gif';
-      this._showBubble('Византично!', false, () => {
-        this.imgEl.src = 'pixel_character_stomp_v2.gif';
-      });
-    }, 560);
+  animateShift() {
+    this.imgEl.src = 'pointing.gif';
+    this._showBubble('Византично!', false, () => {
+      this.imgEl.src = 'pixel_character_stomp_v2.gif';
+    });
   },
 
   animateLose() {
