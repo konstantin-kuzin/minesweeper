@@ -607,8 +607,6 @@ const UI = {
     msg.className = 'lose';
     this._setFace('win');
     Kostya.animateLose();
-    Confetti.start();
-    setTimeout(() => Confetti.stop(), Confetti.DURATION_MS + 800);
   },
 
   _handleTimeout() {
@@ -619,8 +617,6 @@ const UI = {
     msg.className = 'lose';
     this._setFace('win');
     Kostya.animateTimeout();
-    Confetti.start();
-    setTimeout(() => Confetti.stop(), Confetti.DURATION_MS + 800);
   },
 
   _showWin() {
@@ -709,7 +705,7 @@ const Kostya = {
   animateLose() {
     this._stopWander();
     this.imgEl.src = 'panic_scream.gif';
-    this._showBubble('Как макеты рисуешь, так и играешь!', true);
+    this._showBubble('Вакханально!', true);
   },
 
   animateWin() {
