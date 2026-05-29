@@ -2,8 +2,23 @@
 
 const ROWS = 10;
 const COLS = 10;
-const MINES = 15;
+const PISCES_ROWS = 7;
+const PISCES_COLS = 7;
+const MINES = 10;
+const VIRGO_MINES = 20;
 const TIME_LIMIT = 150;
+
+const GAME_MODES = {
+  NORMAL: 'normal',
+  PISCES: 'pisces',
+  VIRGO: 'virgo'
+};
+
+const MODE_CAPTIONS = {
+  [GAME_MODES.VIRGO]: 'Ну тут же всё очевидно',
+  [GAME_MODES.PISCES]:
+    'Вот эти все цифры, метрики, дашборды... тебе это не нужно, просто доверься интуиции'
+};
 
 const formatTime = seconds => {
   const s = Math.max(0, seconds);
@@ -87,10 +102,17 @@ const Sound = {
 };
 
 class Game {
-  constructor() {
-    this.rows = ROWS;
-    this.cols = COLS;
-    this.totalMines = MINES;
+  constructor(mode = GAME_MODES.NORMAL) {
+    this.mode = mode;
+    if (mode === GAME_MODES.PISCES) {
+      this.rows = PISCES_ROWS;
+      this.cols = PISCES_COLS;
+    } else {
+      this.rows = ROWS;
+      this.cols = COLS;
+    }
+    this.totalMines = mode === GAME_MODES.VIRGO ? VIRGO_MINES : MINES;
+    this.hideNumbers = mode === GAME_MODES.PISCES;
     this.timeLimit = TIME_LIMIT;
     this.cells = [];
     this.flagCount = 0;
@@ -113,6 +135,11 @@ class Game {
   }
 
   _placeMines(safeRow, safeCol) {
+    if (this.mode === GAME_MODES.VIRGO) {
+      this._placeMinesVirgo();
+      return;
+    }
+
     const candidates = [];
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++)
@@ -126,6 +153,48 @@ class Game {
       this.cells[r][c].mine = true;
     }
     this._calcCounts();
+  }
+
+  _placeMinesVirgo() {
+    for (let r = this.rows - 2; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++)
+        this.cells[r][c].mine = true;
+    this._calcCounts();
+  }
+
+  _relocateMineTargets(fromRow, fromCol) {
+    const targets = [];
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (r === fromRow && c === fromCol) continue;
+        const cell = this.cells[r][c];
+        if (!cell.mine && !cell.revealed && !cell.flagged) targets.push([r, c]);
+      }
+    }
+    return targets;
+  }
+
+  _relocateMine(fromRow, fromCol) {
+    this.cells[fromRow][fromCol].mine = false;
+    const targets = this._relocateMineTargets(fromRow, fromCol);
+    if (!targets.length) {
+      this.cells[fromRow][fromCol].mine = true;
+      return false;
+    }
+    const [tr, tc] = targets[Math.floor(Math.random() * targets.length)];
+    this.cells[tr][tc].mine = true;
+    this._calcCounts();
+    return true;
+  }
+
+  _checkWin() {
+    if (this.revealedCount >= this.rows * this.cols - this.totalMines) {
+      this.won = true;
+      this.moveCount++;
+      this._stopTimer();
+      return true;
+    }
+    return false;
   }
 
   _calcCounts() {
@@ -189,7 +258,7 @@ class Game {
 
   _incrementMoveAndMaybeShift() {
     this.moveCount++;
-    return true;
+    return this.mode !== GAME_MODES.PISCES;
   }
 
   applyShift(angle) {
@@ -204,6 +273,7 @@ class Game {
     const cell = this.cells[row][col];
     if (cell.revealed || cell.flagged) return { type: 'none' };
 
+    const wasFirstClick = this.firstClick;
     if (this.firstClick) {
       this.firstClick = false;
       this._placeMines(row, col);
@@ -211,22 +281,33 @@ class Game {
     }
 
     if (cell.mine) {
-      cell.revealed = true;
-      this.gameOver = true;
-      this.moveCount++;
-      this._stopTimer();
-      return { type: 'mine', row, col };
+      if (this.mode === GAME_MODES.PISCES) {
+        if (!this._relocateMine(row, col)) {
+          this.won = true;
+          this.moveCount++;
+          this._stopTimer();
+          return { type: 'win' };
+        }
+      } else if (this.mode === GAME_MODES.VIRGO && wasFirstClick) {
+        if (!this._relocateMine(row, col)) {
+          this.won = true;
+          this.moveCount++;
+          this._stopTimer();
+          return { type: 'win' };
+        }
+      } else {
+        cell.revealed = true;
+        this.gameOver = true;
+        this.moveCount++;
+        this._stopTimer();
+        return { type: 'mine', row, col };
+      }
     }
 
     const newlyRevealed = this._floodFill(row, col);
     this.revealedCount += newlyRevealed;
 
-    if (this.revealedCount >= this.rows * this.cols - this.totalMines) {
-      this.won = true;
-      this.moveCount++;
-      this._stopTimer();
-      return { type: 'win' };
-    }
+    if (this._checkWin()) return { type: 'win' };
 
     const shifted = this._incrementMoveAndMaybeShift();
     return { type: 'reveal', shifted };
@@ -296,19 +377,53 @@ class Game {
   }
 }
 
-const UI = {
-  game: null,
+const ModeModal = {
+  el: null,
+  pendingMode: GAME_MODES.NORMAL,
 
   init() {
+    this.el = document.getElementById('mode-modal');
+    this.el.querySelectorAll('[data-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.pendingMode = btn.dataset.mode;
+        this.hide();
+        UI.startGame(this.pendingMode);
+      });
+    });
+  },
+
+  show() {
+    this.el.classList.remove('hidden');
+  },
+
+  hide() {
+    this.el.classList.add('hidden');
+  }
+};
+
+const UI = {
+  game: null,
+  currentMode: GAME_MODES.NORMAL,
+
+  init() {
+    ModeModal.init();
     document.getElementById('new-game-btn')
-      .addEventListener('click', () => this.newGame());
+      .addEventListener('click', () => {
+        if (this.game) this.game._stopTimer();
+        ModeModal.show();
+      });
+    ModeModal.show();
+  },
+
+  startGame(mode = GAME_MODES.NORMAL) {
+    this.currentMode = mode;
     this.newGame();
   },
 
   newGame() {
     if (typeof Confetti !== 'undefined') Confetti.stop();
     if (this.game) this.game._stopTimer();
-    this.game = new Game();
+    this.game = new Game(this.currentMode);
     this.game.onTimeout = () => this._handleTimeout();
     this._renderBoard();
     this._updateMineCounter();
@@ -318,12 +433,37 @@ const UI = {
     document.getElementById('timer').classList.remove('warning');
     document.getElementById('message').textContent = '';
     document.getElementById('message').className = '';
+    this._updateModeCaption();
     if (typeof Kostya !== 'undefined') Kostya.reset();
+  },
+
+  _updateModeCaption() {
+    const el = document.getElementById('mode-caption');
+    const text = MODE_CAPTIONS[this.currentMode];
+    if (text) {
+      el.textContent = text;
+      el.classList.remove('hidden');
+    } else {
+      el.textContent = '';
+      el.classList.add('hidden');
+    }
+  },
+
+  _updateBoardLayout(cols) {
+    const cellSize = 32;
+    const boardBorder = 6;
+    const boardWidth = cols * cellSize + boardBorder;
+    const panelWidth = boardWidth + 18;
+    const root = document.documentElement.style;
+    root.setProperty('--board-cols', String(cols));
+    root.setProperty('--board-width', `${boardWidth}px`);
+    root.setProperty('--panel-width', `${panelWidth}px`);
   },
 
   _renderBoard() {
     const boardEl = document.getElementById('board');
     const { rows, cols } = this.game;
+    this._updateBoardLayout(cols);
     boardEl.style.gridTemplateColumns = `repeat(${cols}, 32px)`;
     boardEl.innerHTML = '';
     for (let r = 0; r < rows; r++) {
@@ -354,7 +494,10 @@ const UI = {
     el.textContent = '';
     if (cell.revealed) {
       el.classList.add('revealed');
-      if (cell.count > 0) {
+      if (cell.mine) {
+        el.classList.add('mine');
+        el.textContent = '💣';
+      } else if (cell.count > 0 && !this.game.hideNumbers) {
         const num = document.createElement('span');
         num.className = 'cell-num';
         num.textContent = cell.count;
@@ -392,18 +535,26 @@ const UI = {
   _handleReveal(row, col) {
     const result = this.game.reveal(row, col);
     if (result.type === 'none') return;
+    if (result.type === 'win') {
+      Sound.playExplode();
+      this._showWin();
+      return;
+    }
     this._refreshAllCells();
     this._updateMineCounter();
     if (result.shifted) this._applyBoardShift();
     if (result.type === 'mine') {
       Sound.playWin();
       this._showGameOver(result.row, result.col);
-    } else if (result.type === 'win') {
-      Sound.playExplode();
-      this._showWin();
     } else if (result.type === 'reveal') {
       Sound.playReveal();
     }
+  },
+
+  _revealAllMinesInModel() {
+    this.game.getAllMines().forEach(([r, c]) => {
+      this.game.cells[r][c].revealed = true;
+    });
   },
 
   _handleFlag(row, col) {
@@ -448,11 +599,8 @@ const UI = {
   },
 
   _showGameOver(hitRow, hitCol) {
-    this.game.getAllMines().forEach(([r, c]) => {
-      const el = this._getCellEl(r, c);
-      el.classList.add('revealed', 'mine');
-      el.textContent = '💣';
-    });
+    this._revealAllMinesInModel();
+    this._refreshAllCells();
     this._getCellEl(hitRow, hitCol).classList.add('mine-hit');
     const msg = document.getElementById('message');
     msg.textContent = 'GAME OVER';
@@ -460,31 +608,32 @@ const UI = {
     this._setFace('win');
     Kostya.animateLose();
     Confetti.start();
-    setTimeout(() => Confetti.stop(), 3500);
+    setTimeout(() => Confetti.stop(), Confetti.DURATION_MS + 800);
   },
 
   _handleTimeout() {
+    this._revealAllMinesInModel();
     this._refreshAllCells();
-    this.game.getAllMines().forEach(([r, c]) => {
-      const el = this._getCellEl(r, c);
-      el.classList.add('revealed', 'mine');
-      el.textContent = '💣';
-    });
     const msg = document.getElementById('message');
     msg.textContent = 'ВРЕМЯ ВЫШЛО!';
     msg.className = 'lose';
     this._setFace('win');
     Kostya.animateTimeout();
     Confetti.start();
-    setTimeout(() => Confetti.stop(), 3500);
+    setTimeout(() => Confetti.stop(), Confetti.DURATION_MS + 800);
   },
 
   _showWin() {
+    this._revealAllMinesInModel();
+    this._refreshAllCells();
+    this._updateMineCounter();
     const msg = document.getElementById('message');
     msg.textContent = 'YOU WIN!';
     msg.className = 'win';
     this._setFace('lose');
     Kostya.animateWin();
+    Confetti.start();
+    setTimeout(() => Confetti.stop(), Confetti.DURATION_MS + 800);
   }
 };
 
@@ -591,10 +740,36 @@ const Kostya = {
 };
 
 const Confetti = {
+  DURATION_MS: 5200,
   canvas: null,
   ctx: null,
   particles: [],
   animId: null,
+  spawnUntil: 0,
+
+  _makeParticle() {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const round = Math.random() < 0.25;
+    return {
+      x: Math.random() * w,
+      y: -(Math.random() * h * 0.35),
+      w: round ? 7 + Math.random() * 10 : 8 + Math.random() * 14,
+      h: round ? 7 + Math.random() * 10 : 5 + Math.random() * 11,
+      round,
+      color: `hsl(${Math.random() * 360}, 90%, ${52 + Math.random() * 18}%)`,
+      vy: 3 + Math.random() * 5,
+      vx: (Math.random() - 0.5) * 5,
+      rot: Math.random() * Math.PI * 2,
+      drot: (Math.random() - 0.5) * 0.22,
+      sway: 0.02 + Math.random() * 0.04,
+      phase: Math.random() * Math.PI * 2
+    };
+  },
+
+  _spawn(count) {
+    for (let i = 0; i < count; i++) this.particles.push(this._makeParticle());
+  },
 
   start() {
     if (!this.canvas) {
@@ -603,45 +778,55 @@ const Confetti = {
         'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;';
       document.body.appendChild(this.canvas);
     }
-    this.canvas.width  = window.innerWidth;
+    this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.ctx = this.canvas.getContext('2d');
-    this.particles = Array.from({ length: 80 }, () => ({
-      x:    Math.random() * this.canvas.width,
-      y:    -(Math.random() * this.canvas.height * 0.5),
-      w:    6 + Math.random() * 10,
-      h:    3 + Math.random() * 6,
-      color: `hsl(${Math.random() * 360},80%,60%)`,
-      vy:   2 + Math.random() * 3,
-      vx:   (Math.random() - 0.5) * 2,
-      rot:  Math.random() * Math.PI * 2,
-      drot: (Math.random() - 0.5) * 0.15
-    }));
+    this.particles = [];
+    this.spawnUntil = Date.now() + this.DURATION_MS;
+    this._spawn(200);
     if (this.animId) cancelAnimationFrame(this.animId);
     this._draw();
   },
 
   _draw() {
+    const now = Date.now();
+    if (now < this.spawnUntil) this._spawn(8);
+
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let alive = false;
-    this.particles.forEach(p => {
-      p.y += p.vy; p.x += p.vx; p.rot += p.drot;
-      if (p.y < this.canvas.height + 20) alive = true;
+    this.particles = this.particles.filter(p => {
+      p.phase += p.sway;
+      p.y += p.vy;
+      p.x += p.vx + Math.sin(p.phase) * 1.2;
+      p.rot += p.drot;
+      if (p.y > this.canvas.height + 40) return false;
+      alive = true;
       this.ctx.save();
       this.ctx.translate(p.x, p.y);
       this.ctx.rotate(p.rot);
       this.ctx.fillStyle = p.color;
-      this.ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      if (p.round) {
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
+        this.ctx.fill();
+      } else {
+        this.ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      }
       this.ctx.restore();
+      return true;
     });
-    this.animId = alive
+
+    const stillSpawning = now < this.spawnUntil;
+    this.animId = alive || stillSpawning
       ? requestAnimationFrame(() => this._draw())
       : (this.stop(), null);
   },
 
   stop() {
+    this.spawnUntil = 0;
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.canvas) { this.canvas.remove(); this.canvas = null; }
+    this.particles = [];
   }
 };
 

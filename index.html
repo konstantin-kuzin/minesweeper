@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="mode-modal" class="mode-modal" role="dialog" aria-modal="true" aria-labelledby="mode-modal-title">
+    <div class="mode-modal__panel">
+      <p id="mode-modal-title" class="mode-modal__text">А вы случайно не Рыбы по гороскопу?</p>
+      <div class="mode-modal__actions">
+        <button type="button" class="mode-modal__btn" data-mode="pisces">Возможно</button>
+        <button type="button" class="mode-modal__btn" data-mode="virgo">Нет, Дева, а что?</button>
+        <button type="button" class="mode-modal__btn" data-mode="normal">Да, не Рыбы</button>
+      </div>
+    </div>
+  </div>
   <div id="app">
     <div id="game-container">
       <div id="kostya-track">
@@ -15,16 +25,19 @@
           <img id="kostya-img" src="pixel_character_stomp_v2.gif" alt="Kostya">
         </div>
       </div>
-      <div id="board-wrapper">
-        <div id="toolbar">
-          <div id="mine-counter"><span id="mines-left">010</span></div>
-          <button id="new-game-btn" type="button" aria-label="Новая игра">🙂</button>
-          <div id="timer"><span id="time">2:30</span></div>
+      <div id="game-panel">
+        <div id="board-wrapper">
+          <div id="toolbar">
+            <div id="mine-counter"><span id="mines-left">010</span></div>
+            <button id="new-game-btn" type="button" aria-label="Новая игра">🙂</button>
+            <div id="timer"><span id="time">2:30</span></div>
+          </div>
+          <div id="message"></div>
+          <div id="board-area">
+            <div id="board"></div>
+          </div>
         </div>
-        <div id="message"></div>
-        <div id="board-area">
-          <div id="board"></div>
-        </div>
+        <p id="mode-caption" class="mode-caption hidden" aria-live="polite"></p>
       </div>
     </div>
   </div>
